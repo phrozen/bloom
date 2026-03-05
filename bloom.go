@@ -188,9 +188,8 @@ func (f *Filter) MarshalBinary() ([]byte, error) {
 
 // UnmarshalBinary implements the encoding.BinaryUnmarshaler interface.
 // It restores the filter's parameters and bitset from data produced by
-// MarshalBinary. The hasher is set to the default FNV-1a; use WithHashFunc
-// on the resulting filter if a different hasher was used when the data was
-// originally created.
+// MarshalBinary. If the receiver was created with a custom hasher (via
+// WithHashFunc), that hasher is preserved. Otherwise, it defaults to FNV-1a.
 func (f *Filter) UnmarshalBinary(data []byte) error {
 	if len(data) < 16 {
 		return errors.New("bloom: binary data too short")
@@ -213,7 +212,9 @@ func (f *Filter) UnmarshalBinary(data []byte) error {
 	f.m = m
 	f.k = k
 	f.bitset = bitset
-	f.hasher = fnv.New64a
+	if f.hasher == nil {
+		f.hasher = fnv.New64a
+	}
 	f.pool = sync.Pool{
 		New: func() any { return f.hasher() },
 	}
