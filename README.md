@@ -98,15 +98,15 @@ All benchmarks on AMD Ryzen 7 5800X (16 threads), 16-byte UUID keys, `go test -b
 | `Add` | ~36 ns | 0 | 0 |
 | `Contains` | ~25 ns | 0 | 0 |
 
-### At scale (1M items, 1% FPR)
+### At scale (1M items, 1% FPR, 16 goroutines)
 
-| Benchmark | Result |
-|---|---|
-| Insert 1M keys | ~56 ms (~56 ns/key) |
-| Lookup (1M populated) | ~52 ns/op, 0 allocs |
-| Concurrent Add+Contains (16 goroutines) | ~9 ns/op, 0 allocs |
-| Filter memory footprint | 1.14 MB (9.58M bits) |
-| Actual false positive rate | ~1.00% (target: 1%) |
+| Benchmark | ns/op | B/op | allocs/op |
+|---|---|---|---|
+| Concurrent Add | ~12 ns | 0 | 0 |
+| Concurrent Contains | ~9 ns | 0 | 0 |
+| Concurrent Add+Contains (50/50) | ~14 ns | 0 | 0 |
+| **Filter memory footprint** | **1.14 MB** | | |
+| **Actual false positive rate** | **~1.00%** | | |
 
 ### Hash function comparison
 
