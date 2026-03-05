@@ -30,5 +30,6 @@ jobs:
       with:
         report: true
         chart: true
-        amend: true 
+        amend: true
+        coverage-file: coverage.out
       continue-on-error: true
