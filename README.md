@@ -1,5 +1,10 @@
 # bloom
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/phrozen/bloom.svg)](https://pkg.go.dev/github.com/phrozen/bloom)
+[![Go Report Card](https://goreportcard.com/badge/github.com/phrozen/bloom)](https://goreportcard.com/report/github.com/phrozen/bloom)
+[![Build Status](https://github.com/phrozen/bloom/actions/workflows/go.yml/badge.svg)](https://github.com/phrozen/bloom/actions)
+[![LICENSE](https://img.shields.io/github/license/phrozen/bloom)](https://github.com/phrozen/bloom/blob/main/LICENSE)
+
 An ultra fast, lightweight, concurrent-safe [Bloom filter](https://en.wikipedia.org/wiki/Bloom_filter) for Go.
 
 **Zero dependencies** — only the Go standard library. Zero allocations per operation. Lock-free concurrent reads and writes via `atomic.Uint64`. Built for production use, small enough to understand (just over 100 LOC).
