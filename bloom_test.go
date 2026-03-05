@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash"
 	"hash/fnv"
+	"sync"
 	"testing"
 )
 
@@ -448,6 +449,48 @@ func TestFilter_UnmarshalBinary_PreservesHasher(t *testing.T) {
 	for _, item := range items {
 		if !bare.Contains(item) {
 			t.Errorf("bare filter (default hasher) should contain %q", item)
+		}
+	}
+}
+
+func TestFilter_ConcurrentAddMatchesSequential(t *testing.T) {
+	const n = 1000
+
+	// Generate keys once, shared by both filters.
+	keys := make([][]byte, n)
+	for i := range n {
+		b := make([]byte, 16)
+		rand.Read(b)
+		keys[i] = b
+	}
+
+	// Sequential filter.
+	seq := NewFilterFromProbability(n, 0.01)
+	for _, k := range keys {
+		seq.Add(k)
+	}
+
+	// Concurrent filter — same parameters, same keys.
+	con := NewFilterFromProbability(n, 0.01)
+	var wg sync.WaitGroup
+	for _, k := range keys {
+		wg.Add(1)
+		go func(data []byte) {
+			defer wg.Done()
+			con.Add(data)
+		}(k)
+	}
+	wg.Wait()
+
+	// Both bitsets must be identical.
+	if len(seq.bitset) != len(con.bitset) {
+		t.Fatalf("bitset length mismatch: seq=%d, con=%d", len(seq.bitset), len(con.bitset))
+	}
+	for i := range seq.bitset {
+		s := seq.bitset[i].Load()
+		c := con.bitset[i].Load()
+		if s != c {
+			t.Fatalf("bitset word %d differs: seq=%064b, con=%064b", i, s, c)
 		}
 	}
 }
