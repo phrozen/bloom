@@ -30,8 +30,5 @@ jobs:
       with:
         report: true
         chart: true
-        amend: true
-      if: |
-        matrix.os == 'ubuntu-latest' &&
-        github.event_name == 'push'  
+        amend: true 
       continue-on-error: true
