@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"hash"
+	"hash/fnv"
 	"testing"
 )
 
@@ -388,5 +390,64 @@ func TestFilter_UnmarshalBinary_Errors(t *testing.T) {
 	binary.LittleEndian.PutUint64(short[8:16], 7) // k = 7
 	if err := f.UnmarshalBinary(short); err == nil {
 		t.Error("expected error for truncated bitset")
+	}
+}
+
+func TestFilter_UnmarshalBinary_PreservesHasher(t *testing.T) {
+	// Create a filter with a custom hasher (FNV-1, not FNV-1a) and add items.
+	customHasher := fnv.New64
+	f := NewFilterFromProbability(1000, 0.01, WithHashFunc(customHasher))
+
+	items := [][]byte{
+		[]byte("550e8400-e29b-41d4-a716-446655440000"),
+		[]byte("6ba7b810-9dad-11d1-80b4-00c04fd430c8"),
+		[]byte("f47ac10b-58cc-4372-a567-0e02b2c3d479"),
+	}
+	for _, item := range items {
+		f.Add(item)
+	}
+
+	data, err := f.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary failed: %v", err)
+	}
+
+	// Unmarshal into a filter that was constructed with the same custom hasher.
+	// The hasher should be preserved, not overwritten with FNV-1a.
+	restored := NewFilter(0, 0, WithHashFunc(customHasher))
+	if err := restored.UnmarshalBinary(data); err != nil {
+		t.Fatalf("UnmarshalBinary failed: %v", err)
+	}
+
+	// Verify the pool actually holds the custom hasher type, not FNV-1a.
+	got := restored.pool.Get().(hash.Hash64)
+	want := customHasher()
+	if fmt.Sprintf("%T", got) != fmt.Sprintf("%T", want) {
+		t.Errorf("hasher type not preserved: got %T, want %T", got, want)
+	}
+	restored.pool.Put(got)
+
+	for _, item := range items {
+		if !restored.Contains(item) {
+			t.Errorf("restored filter with preserved hasher should contain %q", item)
+		}
+	}
+
+	// Also verify that a bare Filter (nil hasher) defaults to FNV-1a and
+	// can still unmarshal a filter that was originally created with FNV-1a.
+	fnvFilter := NewFilterFromProbability(1000, 0.01)
+	for _, item := range items {
+		fnvFilter.Add(item)
+	}
+	fnvData, _ := fnvFilter.MarshalBinary()
+
+	var bare Filter
+	if err := bare.UnmarshalBinary(fnvData); err != nil {
+		t.Fatalf("UnmarshalBinary on bare Filter failed: %v", err)
+	}
+	for _, item := range items {
+		if !bare.Contains(item) {
+			t.Errorf("bare filter (default hasher) should contain %q", item)
+		}
 	}
 }
