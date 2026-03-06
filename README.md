@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/phrozen/bloom)](https://goreportcard.com/report/github.com/phrozen/bloom)
 [![Build Status](https://github.com/phrozen/bloom/actions/workflows/go.yml/badge.svg)](https://github.com/phrozen/bloom/actions)
 [![Go Coverage](https://github.com/phrozen/bloom/wiki/coverage.svg)](https://raw.githack.com/wiki/phrozen/bloom/coverage.html)
-[![LICENSE](https://img.shields.io/github/license/phrozen/bloom)](https://github.com/phrozen/bloom/blob/main/LICENSE)
+[![LICENSE](https://img.shields.io/badge/license-Apache_2.0-green)](https://github.com/phrozen/bloom/blob/main/LICENSE)
 
 An ultra fast, lightweight, concurrent-safe [Bloom filter](https://en.wikipedia.org/wiki/Bloom_filter) for Go.
 
