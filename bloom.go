@@ -113,20 +113,26 @@ func NewFilterFromProbability(n int, p float64, opts ...Option) *Filter {
 	return NewFilter(int(m), int(k), opts...)
 }
 
-// Add inserts data into the Bloom filter.
-// It hashes the data once, splits the 64-bit result into two 32-bit halves,
-// and simulates `k` independent hashes via Kirsch-Mitzenmacher.
-// This method is safe for concurrent use.
-func (f *Filter) Add(data []byte) {
+// sum is a helper function that computes the hash of data using the provided hasher.
+// It retrieves a hasher from the pool, computes the hash, and then returns it to the pool
+// to avoid per-call allocations. The 64-bit hash is split into two 32-bit halves.
+func (f *Filter) sum(data []byte) (uint64, uint64) {
 	h := f.pool.Get().(hash.Hash64)
 	h.Reset()
 	h.Write(data)
 	sum := h.Sum64()
 	f.pool.Put(h)
-
 	// Split the 64-bit hash into two 32-bit halves for Kirsch-Mitzenmacher
-	h1 := sum & 0xffffffff
-	h2 := sum >> 32
+	// returned as uint64 for convenience
+	return sum & 0xffffffff, sum >> 32
+}
+
+// Add inserts data into the Bloom filter.
+// It hashes the data once, splits the 64-bit result into two 32-bit halves,
+// and simulates `k` independent hashes via Kirsch-Mitzenmacher.
+// This method is safe for concurrent use.
+func (f *Filter) Add(data []byte) {
+	h1, h2 := f.sum(data)
 
 	for i := range f.k {
 		// Simulate k independent hashes: hash_i = h1 + i * h2
@@ -142,15 +148,7 @@ func (f *Filter) Add(data []byte) {
 // If *all* of the positions are 1, it *might* have been added (or we have a collision).
 // This method is safe for concurrent use.
 func (f *Filter) Contains(data []byte) bool {
-	h := f.pool.Get().(hash.Hash64)
-	h.Reset()
-	h.Write(data)
-	sum := h.Sum64()
-	f.pool.Put(h)
-
-	// Split the 64-bit hash into two 32-bit halves for Kirsch-Mitzenmacher
-	h1 := sum & 0xffffffff
-	h2 := sum >> 32
+	h1, h2 := f.sum(data)
 
 	for i := range f.k {
 		bitIdx := (h1 + i*h2) % f.m

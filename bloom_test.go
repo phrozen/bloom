@@ -494,3 +494,38 @@ func TestFilter_ConcurrentAddMatchesSequential(t *testing.T) {
 		}
 	}
 }
+
+func TestFilter_Sum(t *testing.T) {
+	f := NewFilter(1000, 7)
+
+	// sum must be deterministic: same input → same output.
+	h1a, h2a := f.sum([]byte("hello"))
+	h1b, h2b := f.sum([]byte("hello"))
+	if h1a != h1b || h2a != h2b {
+		t.Fatalf("sum not deterministic: (%d,%d) vs (%d,%d)", h1a, h2a, h1b, h2b)
+	}
+
+	// Different inputs must (almost certainly) produce different hashes.
+	h1c, h2c := f.sum([]byte("world"))
+	if h1a == h1c && h2a == h2c {
+		t.Error("sum produced identical halves for different inputs")
+	}
+
+	// Both halves must fit in 32 bits.
+	if h1a > 0xffffffff {
+		t.Errorf("h1 exceeds 32 bits: %d", h1a)
+	}
+	if h2a > 0xffffffff {
+		t.Errorf("h2 exceeds 32 bits: %d", h2a)
+	}
+
+	// Verify against a manual FNV-1a computation.
+	h := fnv.New64a()
+	h.Write([]byte("hello"))
+	raw := h.Sum64()
+	wantH1 := raw & 0xffffffff
+	wantH2 := raw >> 32
+	if h1a != wantH1 || h2a != wantH2 {
+		t.Errorf("sum mismatch with manual FNV-1a: got (%d,%d), want (%d,%d)", h1a, h2a, wantH1, wantH2)
+	}
+}
