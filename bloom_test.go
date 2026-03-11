@@ -495,37 +495,104 @@ func TestFilter_ConcurrentAddMatchesSequential(t *testing.T) {
 	}
 }
 
-func TestFilter_Sum(t *testing.T) {
+func TestFilter_Iter(t *testing.T) {
 	f := NewFilter(1000, 7)
 
-	// sum must be deterministic: same input → same output.
-	h1a, h2a := f.sum([]byte("hello"))
-	h1b, h2b := f.sum([]byte("hello"))
-	if h1a != h1b || h2a != h2b {
-		t.Fatalf("sum not deterministic: (%d,%d) vs (%d,%d)", h1a, h2a, h1b, h2b)
+	collect := func(data []byte) []uint64 {
+		out := make([]uint64, 0, f.k)
+		for bitIdx := range f.iter(data) {
+			out = append(out, bitIdx)
+		}
+		return out
 	}
 
-	// Different inputs must (almost certainly) produce different hashes.
-	h1c, h2c := f.sum([]byte("world"))
-	if h1a == h1c && h2a == h2c {
-		t.Error("sum produced identical halves for different inputs")
+	// iter must be deterministic: same input -> same sequence.
+	a := collect([]byte("hello"))
+	b := collect([]byte("hello"))
+	if len(a) != len(b) {
+		t.Fatalf("iter length mismatch: %d vs %d", len(a), len(b))
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			t.Fatalf("iter not deterministic at index %d: %d vs %d", i, a[i], b[i])
+		}
 	}
 
-	// Both halves must fit in 32 bits.
-	if h1a > 0xffffffff {
-		t.Errorf("h1 exceeds 32 bits: %d", h1a)
+	// Different inputs should (almost certainly) produce a different sequence.
+	c := collect([]byte("world"))
+	identical := len(a) == len(c)
+	if identical {
+		for i := range a {
+			if a[i] != c[i] {
+				identical = false
+				break
+			}
+		}
 	}
-	if h2a > 0xffffffff {
-		t.Errorf("h2 exceeds 32 bits: %d", h2a)
+	if identical {
+		t.Error("iter produced identical sequence for different inputs")
+	}
+
+	if len(a) != int(f.k) {
+		t.Fatalf("iter yielded %d positions, want %d", len(a), f.k)
+	}
+	for i, bitIdx := range a {
+		if bitIdx >= f.m {
+			t.Fatalf("bit index out of range at %d: got %d, m=%d", i, bitIdx, f.m)
+		}
 	}
 
 	// Verify against a manual FNV-1a computation.
 	h := fnv.New64a()
-	h.Write([]byte("hello"))
+	_, _ = h.Write([]byte("hello"))
 	raw := h.Sum64()
 	wantH1 := raw & 0xffffffff
 	wantH2 := raw >> 32
-	if h1a != wantH1 || h2a != wantH2 {
-		t.Errorf("sum mismatch with manual FNV-1a: got (%d,%d), want (%d,%d)", h1a, h2a, wantH1, wantH2)
+	for i := range f.k {
+		wantBit := (wantH1 + i*wantH2) % f.m
+		if a[i] != wantBit {
+			t.Fatalf("unexpected bit index at %d: got %d, want %d", i, a[i], wantBit)
+		}
+	}
+}
+
+func TestFilter_IterMatchesManualBitIndexes(t *testing.T) {
+	f := NewFilter(2048, 9)
+	data := []byte("manual-check")
+
+	got := make([]uint64, 0, f.k)
+	for bitIdx := range f.iter(data) {
+		got = append(got, bitIdx)
+	}
+
+	h := fnv.New64a()
+	_, _ = h.Write(data)
+	sum := h.Sum64()
+	h1, h2 := sum&0xffffffff, sum>>32
+
+	want := make([]uint64, 0, f.k)
+	for i := range f.k {
+		want = append(want, (h1+i*h2)%f.m)
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("iter length mismatch: got %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("bit index mismatch at %d: got %d, want %d", i, got[i], want[i])
+		}
+	}
+
+	// Iterator must honor early stop when the consumer breaks.
+	count := 0
+	for range f.iter(data) {
+		count++
+		if count == 3 {
+			break
+		}
+	}
+	if count != 3 {
+		t.Fatalf("early stop mismatch: got %d iterations, want 3", count)
 	}
 }

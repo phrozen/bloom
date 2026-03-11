@@ -113,18 +113,26 @@ func NewFilterFromProbability(n int, p float64, opts ...Option) *Filter {
 	return NewFilter(int(m), int(k), opts...)
 }
 
-// sum is a helper function that computes the hash of data using the provided hasher.
-// It retrieves a hasher from the pool, computes the hash, and then returns it to the pool
-// to avoid per-call allocations. The 64-bit hash is split into two 32-bit halves.
-func (f *Filter) sum(data []byte) (uint64, uint64) {
-	h := f.pool.Get().(hash.Hash64)
-	h.Reset()
-	h.Write(data)
-	sum := h.Sum64()
-	f.pool.Put(h)
-	// Split the 64-bit hash into two 32-bit halves for Kirsch-Mitzenmacher
-	// returned as uint64 for convenience
-	return sum & 0xffffffff, sum >> 32
+// iter builds an iterator that yields each bit index for data.
+// It computes one 64-bit hash, splits it into two 32-bit halves,
+// and applies Kirsch-Mitzenmacher to simulate k independent hashes.
+// It pools the hasher to avoid per-call allocations and is safe for concurrent use.
+func (f *Filter) iter(data []byte) func(func(uint64) bool) {
+	return func(yield func(uint64) bool) {
+		h := f.pool.Get().(hash.Hash64)
+		h.Reset()
+		_, _ = h.Write(data)
+		sum := h.Sum64()
+		f.pool.Put(h)
+
+		h1, h2 := sum&0xffffffff, sum>>32
+		for i := range f.k {
+			bitIdx := (h1 + i*h2) % f.m
+			if !yield(bitIdx) {
+				return
+			}
+		}
+	}
 }
 
 // Add inserts data into the Bloom filter.
@@ -132,12 +140,7 @@ func (f *Filter) sum(data []byte) (uint64, uint64) {
 // and simulates `k` independent hashes via Kirsch-Mitzenmacher.
 // This method is safe for concurrent use.
 func (f *Filter) Add(data []byte) {
-	h1, h2 := f.sum(data)
-
-	for i := range f.k {
-		// Simulate k independent hashes: hash_i = h1 + i * h2
-		bitIdx := (h1 + i*h2) % f.m
-
+	for bitIdx := range f.iter(data) {
 		// Atomically OR the bit to 1, safe for concurrent writes
 		f.bitset[bitIdx/64].Or(1 << (bitIdx % 64))
 	}
@@ -148,11 +151,7 @@ func (f *Filter) Add(data []byte) {
 // If *all* of the positions are 1, it *might* have been added (or we have a collision).
 // This method is safe for concurrent use.
 func (f *Filter) Contains(data []byte) bool {
-	h1, h2 := f.sum(data)
-
-	for i := range f.k {
-		bitIdx := (h1 + i*h2) % f.m
-
+	for bitIdx := range f.iter(data) {
 		// Atomically load the word and check the specific bit
 		if (f.bitset[bitIdx/64].Load() & (1 << (bitIdx % 64))) == 0 {
 			return false // Definitively not in the set
